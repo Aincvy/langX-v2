@@ -1,0 +1,162 @@
+0.0 s_[i,j,k] 
+
+func => (o,n) {
+
+}
+
+s {
+    x [t=int,|w=func,:r,comment="x坐标"] 
+}
+
+s.x#w.addFunc(o, n => {
+    print o, n;
+});
+
+@call server {
+
+}
+
+
+使用一个新项目，直接应用 langX, 而不是这种纯的设计
+
+spawnMonster => (pos [t=Vector3,comment="坐标"], type[t=int, comment="怪物类型"], num[t=int, comment="数量"]) {
+    // xx x x 
+}
+
+spawnMonster => (pos, type, num) {
+    @params -- {
+        pos [t=Vector3,comment="坐标"], 
+        type[t=int, comment="怪物类型"], 
+        num[t=int, comment="数量"]
+    }
+
+
+}
+
+spawnMonster#params @for p => {
+    // p 是一个 langX的 FunctionParam 类型
+    print $ {p.name}, type: {p.t}, {p.comment}
+}
+
+functions = new List();
+functions @for f => {
+    f#params @for p => {
+        // p 是一个 langX的 FunctionParam 类型
+        print $ {p.name}, type: {p.t}, {p.comment}
+    }
+}
+
+// 迭代器
+ListIterator {
+    i = 0;
+    list;
+    modCount;
+
+    // 允许对当前 类的对象应用 @for 
+    // yield break 表示中断循环， 只有调用这个得时候才会中断循环
+    // yield [e]  表示当前循环对象是 e 
+    @for -- {
+        if(list.modCount != modCount) {
+            throw XXX
+        }
+        if(i == list.cap) {
+            yield break;
+        }
+        yield list.elements[i++];
+    }
+}
+
+List {
+    modCount;
+    cap;
+    elements;
+
+    // 允许对当前 类的对象应用 @for 
+    // @ Class([params])    委托 @for 行为给 类 ListIterator 得对象
+    // #list   ListIterator.list = this,  ListIterator.modCount = this.modCount
+    @for -- @ ListIterator(list, #modCount);
+
+    // 相当于 @for -- @ ListIterator(list = this, modCount = this.modCount);
+}
+
+
+直接# 取 langX内置对象， 一般是反射
+
+// 表示 把当前对象 交给 unity 激活器进行控制
+// update 函数将由 unity进行调用
+// Time.time 也是调用 unity 得对象， 只不过是类注入
+@ -- unity
+Move extends TopComponent {
+
+    lastDoMoveTime;
+    speedIncrPerSecond;
+
+    tmpSpeedPerSecond [
+        t = float,
+        v = 0,
+        @limit [0,1.1]
+    ]
+    speedPerSecond [
+        t = float,
+
+        // 在执行 update 函数之前 会先执行这个函数
+        // 多个 侵占 update 得函数 会按照声明顺序执行
+        // 代码编写可以这么写， 但是编译后的字节码， 应该混合到一起， 使用作用域的方式
+        @encroach update => {
+            // 
+            if(speedPerSecond <= 0) {
+                return;
+            }
+            
+            speedPerSecond = tmpSpeedPerSecond * cos((Time.time - lastDoMoveTime) * 2);
+        }, 
+        @limit [0,1]             // [] 闭区间， () 开区间    ! 取反
+    ]
+    moveDirection [
+        t = Vector3 !!,
+    ]
+
+    // 这个还是在 update 里面更新比较好
+    // press 行为直接委托给 hold
+    // 但是 hold 无法区分到底是 press 还是 hold
+    //@key A press -- hold
+
+    //@key A hold => {
+    //    lastDoMoveTime = Time.time;
+    //    tmpSpeedPerSecond += speedIncrPerSecond * Time.time;
+
+    //    pressW = @value -- @key W hold
+    //    moveDirection = pressW? Vector3.leftForward : Vector3.left;
+    //}
+
+    //@key A release => {
+
+    //}
+
+    start => {
+        transform.position#w.addFunc(o, n) => {
+            // broadcast
+            @call -- {
+                entity.position = n;   
+            }
+        }
+    }
+
+    update => {
+        // 更新
+        newMoveDirection = 
+            @key A hold && @key W hold => transform.leftForward,
+            @key W hold => transform.forward,
+            @key A hold => transform.left,
+            Vector3.zero,
+        if (newMoveDirection != Vector3.zero) {
+            lastDoMoveTime = Time.time;
+            tmpSpeedPerSecond += speedIncrPerSecond * Time.time;
+            moveDirection = newMoveDirection;
+        }
+
+
+        transform.position += moveDirection* speedPerSecond @if speedPerSecond > 0 && moveDirection != Vector3.zero
+    }
+
+}
